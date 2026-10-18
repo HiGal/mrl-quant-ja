@@ -1,0 +1,60 @@
+# Experiment grid for mrl-quant-ja. Every stage reads this file.
+dataset:
+  name: hotchpotch/JQaRA
+  split: test
+
+cache_dir: cache          # embeddings + BM25 runs (gitignored)
+results_dir: results      # CSV / Markdown tables (committed)
+figures_dir: figures      # PNG charts (committed)
+
+models:
+  eg2:
+    id: google/embeddinggemma-2
+    label: EmbeddingGemma 2
+    query_prompt: "task: search result | query: "
+    doc_template: "title: {title} | text: {text}"
+    config_kwargs: {vision_config: null, audio_config: null}   # text encoder only
+    grid: true            # run the full dims x precisions grid
+  eg1:
+    # google/embeddinggemma-300m is gated; unsloth/ is an ungated byte-identical mirror.
+    id: unsloth/embeddinggemma-300m
+    label: EmbeddingGemma 1
+    query_prompt: "task: search result | query: "
+    doc_template: "title: {title} | text: {text}"
+    config_kwargs: {}
+    grid: true            # baseline; its grid is cheap once embeddings are cached
+
+encode:
+  batch_size: 32
+  max_seq_length: 512     # JQaRA passages are <= 400 chars
+  dtype: float32          # never float16 (EmbeddingGemma overflows)
+
+grid:
+  dims: [768, 512, 256, 128]
+  precisions: [float32, int8, int8_deq, ubinary]   # int8 = code·code, int8_deq = fp32 query x dequantized docs
+  rescore:                # binary first stage, re-score top-k with a richer representation
+    k: 100
+    with: [float32, int8_deq]
+  baseline_config: {dim: 768, precision: float32}
+
+eval:
+  modes: [rerank, full]   # rerank = official JQaRA protocol (100 candidates/query),
+                          # full   = retrieval over the pooled corpus of all test passages
+  topk: 100
+  metrics: ["ndcg@10", "recall@100", "mrr@10"]
+
+bm25:
+  tokenizer: fugashi     # MeCab + unidic-lite
+  k1: 1.2
+  b: 0.75
+
+hybrid:
+  rrf_k: 60
+  dense: [{model: eg2, dim: 768, precision: float32}, {model: eg2, dim: 256, precision: int8_deq}, {model: eg2, dim: 512, precision: ubinary, rescore: int8_deq}]
+
+latency:
+  model: eg2
+  batch_sizes: [1, 32]
+  n_queries: 256
+  warmup: 5
+  threads: 8

@@ -1,0 +1,10 @@
+{
+  "cpu": "Apple M1 Pro",
+  "cores": 8,
+  "ram_gb": 16.0,
+  "os": "macOS-15.1.1-arm64-arm-64bit",
+  "python": "3.12.11",
+  "torch": "2.14.1",
+  "onnxruntime": "1.31.0",
+  "threads": 8
+}
