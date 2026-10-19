@@ -188,6 +188,80 @@ def plot_model_compare(w: pd.DataFrame, out, y: str = "ndcg@10 full") -> None:
     plt.close(fig)
 
 
+def _style(ax, title: str, xlabel: str, ylabel: str) -> None:
+    ax.set_title(title, loc="left", color=INK, fontsize=11.5)
+    ax.set_xlabel(xlabel, color=INK_2)
+    ax.set_ylabel(ylabel, color=INK_2)
+    ax.grid(True, color=GRID, lw=0.8)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    for sp in ("left", "bottom"):
+        ax.spines[sp].set_color(GRID)
+    ax.tick_params(colors=INK_2, labelsize=8.5)
+
+
+def _fig(size=(7.2, 4.4)):
+    plt.rcParams.update({"font.family": ["Hiragino Sans", "DejaVu Sans"], "font.size": 10})
+    fig, ax = plt.subplots(figsize=size, dpi=200)
+    fig.patch.set_facecolor("#fcfcfb")
+    ax.set_facecolor("#fcfcfb")
+    return fig, ax
+
+
+def plot_int8_scoring(abl: pd.DataFrame, w: pd.DataFrame, out) -> None:
+    """Same int8 codes, three ways to score them."""
+    fig, ax = _fig()
+    deq = w[(w.model == "eg2") & (w.precision == "int8_deq") & w.rescore.isna()].sort_values("dim")
+    series = [
+        (abl.dim, abl["float32"], "float32 (reference)", COLORS["float32"], "-", "o", 9),
+        (deq.dim, deq["ndcg@10 full"], "int8, float query × dequantized docs", "#1baf7a", "--", "D", 5),
+        (abl.dim, abl["centered"], "float32, centered only", MUTED, ":", "s", 6),
+        (abl.dim, abl["int8 code·code"], "int8 code · code", COLORS["int8"], "-", "o", 7),
+    ]
+    for x, y, label, color, ls, marker, ms in series:
+        ax.plot(x, y, ls=ls, color=color, lw=2, marker=marker, ms=ms, markeredgecolor="#fcfcfb",
+                markeredgewidth=1.2, label=label)
+    ax.set_xscale("log", base=2)
+    ax.set_xticks([128, 256, 512, 768], ["128", "256", "512", "768"])
+    ax.minorticks_off()
+    _style(ax, "Same int8 codes, different scoring (EmbeddingGemma 2, JQaRA)", "Matryoshka dimensions",
+           "nDCG@10 (full corpus)")
+    ax.legend(loc="lower right", fontsize=8, frameon=False, labelcolor=INK_2)
+    fig.tight_layout()
+    fig.savefig(out, facecolor=fig.get_facecolor())
+    plt.close(fig)
+
+
+def plot_rescore(w: pd.DataFrame, out) -> None:
+    """Per dim: binary alone -> binary + int8 rescore -> float32."""
+    fig, ax = _fig((7.2, 4.0))
+    eg2 = w[w.model == "eg2"]
+    dims = [768, 512, 256, 128]
+    for row, dim in enumerate(dims):
+        cell = eg2[eg2.dim == dim]
+        b = cell[(cell.precision == "ubinary") & cell.rescore.isna()]["ndcg@10 full"].iloc[0]
+        r = cell[(cell.precision == "ubinary") & (cell.rescore == "int8_deq")]["ndcg@10 full"].iloc[0]
+        f = cell[(cell.precision == "float32") & cell.rescore.isna()]["ndcg@10 full"].iloc[0]
+        ax.plot([b, r], [row, row], color=GRID, lw=4, solid_capstyle="round", zorder=1)
+        ax.scatter([b], [row], s=70, color=COLORS["ubinary"], zorder=3, edgecolor="#fcfcfb", lw=1.5,
+                   label="binary, Hamming only" if row == 0 else None)
+        ax.scatter([r], [row], s=70, marker="s", facecolor="#fcfcfb", edgecolor=COLORS["ubinary"], lw=2,
+                   zorder=3, label="binary → int8 rescore of top-100" if row == 0 else None)
+        ax.scatter([f], [row], s=110, marker="|", color=COLORS["float32"], lw=2.5, zorder=2,
+                   label="float32, same dims" if row == 0 else None)
+        ax.annotate(f"+{(r - b) * 100:.1f}", ((b + r) / 2, row), xytext=(0, 7), textcoords="offset points",
+                    ha="center", fontsize=8, color=INK_2)
+    ax.set_yticks(range(len(dims)), [f"{d}d · {d // 8} B" for d in dims])
+    ax.set_ylim(len(dims) - 0.5, -0.7)
+    _style(ax, "Rescoring 100 candidates recovers most of what binary loses", "nDCG@10 (full corpus)", "")
+    ax.grid(axis="y", visible=False)
+    ax.legend(loc="upper left", bbox_to_anchor=(0.0, -0.16), ncol=3, fontsize=8, frameon=False,
+              labelcolor=INK_2)
+    fig.tight_layout()
+    fig.savefig(out, facecolor=fig.get_facecolor())
+    plt.close(fig)
+
+
 def build_report(cfg: dict[str, Any]) -> None:
     res, figs = cfg["results_dir"], cfg["figures_dir"]
     df = pd.read_csv(res / "grid.csv")
@@ -206,6 +280,9 @@ def build_report(cfg: dict[str, Any]) -> None:
     plot_pareto(w, knee, figs / "pareto.png", "full")
     plot_pareto(w, knee, figs / "pareto_rerank.png", "rerank")
     plot_model_compare(w, figs / "eg2_vs_eg1.png")
+    plot_rescore(w, figs / "rescore.png")
+    if (res / "int8_ablation.csv").exists():
+        plot_int8_scoring(pd.read_csv(res / "int8_ablation.csv"), w, figs / "int8_scoring.png")
 
     lines = ["# Results", "",
              f"Dataset: `{cfg['dataset']['name']}` ({cfg['dataset']['split']}), 1,667 queries.",

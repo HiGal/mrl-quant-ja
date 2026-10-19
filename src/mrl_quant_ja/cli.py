@@ -28,6 +28,12 @@ def cmd_evaluate(cfg, args) -> None:
     run_all(cfg)
 
 
+def cmd_ablation(cfg, args) -> None:
+    from .ablation import run_int8_ablation
+
+    run_int8_ablation(cfg)
+
+
 def cmd_latency(cfg, args) -> None:
     import sys
 
@@ -48,6 +54,7 @@ def cmd_report(cfg, args) -> None:
 def cmd_reproduce(cfg, args) -> None:
     """Everything downstream of the cached embeddings (no model forward passes)."""
     cmd_evaluate(cfg, args)
+    cmd_ablation(cfg, args)
     cmd_report(cfg, args)
 
 
@@ -63,6 +70,7 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("bm25", help="BM25 baseline with MeCab tokenization").set_defaults(fn=cmd_bm25)
     sub.add_parser("evaluate", help="dims x precisions grid + baselines + hybrid").set_defaults(fn=cmd_evaluate)
+    sub.add_parser("ablation", help="why int8 code·code loses: centering vs stretching").set_defaults(fn=cmd_ablation)
     lat = sub.add_parser("latency", help="CPU query-encode latency: torch fp32 vs ONNX int8")
     lat.add_argument("--skip-export", action="store_true", help="reuse exported ONNX files")
     lat.set_defaults(fn=cmd_latency)
