@@ -1,4 +1,4 @@
-# mrl-quant-ja
+# EmbeddingGemma 2 on Japanese retrieval 
 
 **How small can a Japanese search vector get?** A storage × quality × latency study of
 [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2)'s Matryoshka truncation
